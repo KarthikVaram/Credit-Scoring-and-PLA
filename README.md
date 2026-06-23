@@ -1,339 +1,278 @@
 # Credit Scoring & Portfolio Loss Analysis
 
-**Statistical Classification, Monte Carlo Credit Risk Simulation and Basel II Capital Modelling**
+A quantitative credit risk project built from scratch in **C++17** and **R**, implementing statistical classifiers for loan default prediction and a Monte Carlo portfolio loss engine for Basel II risk metrics.
 
-> C++17 ML Engines • Monte Carlo Portfolio Simulation • R Statistical Analysis
+📄 **Full report:** [`report/Report.pdf`](report/Report.pdf)
+
+---
+
+## Table of Contents
+
+- [Overview](#overview)
+- [Theory](#theory)
+- [Project Structure](#project-structure)
+- [Experiments & Results](#experiments--results)
+- [Quick Start](#quick-start)
+- [Engineering Takeaways](#engineering-takeaways)
+- [References](#references)
 
 ---
 
 ## Overview
 
-This project develops an end-to-end credit risk analytics framework combining borrower-level default prediction with portfolio-level risk measurement.
+| Property | Value |
+|---|---|
+| Dataset | Lending Club loan data (10,000 loans, 14 features, 21.2% default rate) |
+| Language (ML engines) | C++17 |
+| Language (analysis) | R 4.3 + ggplot2 |
+| Models | LDA, k-NN (k=15), Logistic Regression (L2, mini-batch SGD) |
+| Portfolio simulation | One-factor Gaussian copula, 100,000 Monte Carlo scenarios |
+| Risk metrics | EL, UL, VaR 95/99%, CVaR 95/99%, Basel II IRB capital |
+| LGD assumption | 45% (Basel II standard for unsecured retail) |
 
-Using Lending Club loan data, multiple classification models are implemented from scratch in C++ to estimate borrower probabilities of default (PDs). These predicted default probabilities are then aggregated into a correlated loan portfolio using a one-factor Gaussian copula model to simulate portfolio losses, estimate tail-risk measures, and compute Basel II regulatory capital requirements.
+The project answers two questions:
 
-The project combines techniques from:
-
-- Statistical Learning
-- Credit Risk Modelling
-- Quantitative Finance
-- Monte Carlo Simulation
-- Banking Regulation (Basel II)
-
----
-
-## Highlights
-
-- Implemented **LDA**, **k-NN**, and **L2-Regularized Logistic Regression** from scratch in C++17
-- Built a complete machine learning pipeline including preprocessing, training, evaluation and calibration
-- Simulated correlated borrower defaults using a **one-factor Gaussian copula**
-- Generated **100,000 Monte Carlo portfolio loss scenarios**
-- Computed **Expected Loss (EL)**, **Unexpected Loss (UL)**, **VaR**, **CVaR**, and **Basel II Capital Requirements**
-- Produced **12 statistical visualizations** and an **18-page technical report**
-- Combined borrower-level prediction with portfolio-level risk analysis in a single framework
+1. **Borrower level** — given 14 loan features, which borrowers are likely to default?
+2. **Portfolio level** — given a portfolio of loans with estimated PDs, what is the distribution of total losses and how much capital should be held?
 
 ---
 
-## Dataset
+## Theory
 
-The analysis uses a Lending Club style loan dataset consisting of:
+### Credit Scoring
 
-| Metric | Value |
-|----------|----------|
-| Number of Loans | 10,000 |
-| Features | 14 |
-| Historical Default Rate | 21.2% |
-| Target Variable | Charged Off vs Fully Paid |
+Three classifiers are implemented from scratch in C++ (no ML libraries):
 
-Features include:
-
-- Credit Grade
-- FICO Score
-- Debt-to-Income Ratio
-- Loan Amount
-- Interest Rate
-- Employment Length
-- Delinquency History
-- Public Records
-- Loan Term
-- Home Ownership
-
----
-
-# Credit Scoring Models
-
-The project implements three classical credit scoring models from scratch.
-
----
-
-## Linear Discriminant Analysis (LDA)
-
-Implemented Fisher's Linear Discriminant Analysis to maximize separation between defaulters and non-defaulters.
-
-### Purpose
-
-- Produce an interpretable classification boundary
-- Establish a statistical baseline for comparison
-
----
-
-## k-Nearest Neighbours (k-NN)
-
-Implemented a distance-based classifier using:
-
-```text
-k = 15
+**Linear Discriminant Analysis (LDA)** — Fisher's criterion, finds the projection direction that maximises between-class separation:
 ```
-
-### Purpose
-
-- Non-parametric benchmark
-- Capture local borrower structure
-
-### Design Choice
-
-An asymmetric classification threshold is used to reflect the higher cost of missed defaults relative to rejected borrowers.
-
----
-
-## Logistic Regression (L2 Regularized)
-
-Implemented Logistic Regression from scratch using mini-batch gradient descent.
-
-### Training Parameters
-
-| Parameter | Value |
-|------------|------------|
-| Learning Rate | 0.05 |
-| Regularization λ | 0.001 |
-| Batch Size | 64 |
-| Epochs | 300 |
-
-### Features
-
-- L2 Regularization
-- Mini-Batch Gradient Descent
-- Probability Calibration Analysis
-- Threshold Optimization
-
----
-
-# Feature Engineering
-
-The preprocessing pipeline includes:
-
-- Label encoding of categorical variables
-- Feature standardization
-- Train/Test splitting
-- Matrix-based numerical computations
-
-All preprocessing statistics are learned exclusively on the training set and applied to the test set.
-
----
-
-# Model Evaluation
-
-Models were evaluated using:
-
-- Accuracy
-- Precision
-- Recall
-- F1 Score
-- ROC Curves
-- Area Under the Curve (AUC)
-
----
-
-## Test Set Performance
-
-| Model | Threshold | Accuracy | Recall | F1 | AUC |
-|---------|---------|---------|---------|---------|---------|
-| LDA | 0.50 | 0.755 | 0.579 | 0.433 | 0.699 |
-| k-NN | 0.35 | 0.690 | 0.468 | 0.246 | 0.637 |
-| Logistic Regression | 0.40 | 0.776 | 0.327 | 0.291 | 0.699 |
-
----
-
-## Key Findings
-
-- Logistic Regression achieved the highest overall accuracy.
-- LDA achieved the highest recall, correctly identifying over half of all defaulters.
-- k-NN underperformed due to the curse of dimensionality in a 14-dimensional feature space.
-- AUC ≈ 0.70 is consistent with published Lending Club benchmark studies.
-
----
-
-# Probability of Default Calibration
-
-Predicted probabilities were evaluated against observed default frequencies using:
-
-- Grade-level calibration
-- Decile calibration plots
-
-### Observation
-
-The Logistic Regression model slightly underestimates risk for high-risk borrowers due to probability shrinkage introduced by L2 regularization.
-
----
-
-# Portfolio Credit Risk Modelling
-
-After estimating borrower default probabilities, the project aggregates them into a portfolio risk model.
-
----
-
-## One-Factor Gaussian Copula
-
-To model correlated defaults, each borrower is linked to a common systematic economic factor.
-
-```text
-Xi = √ρ Z + √(1 − ρ) εi
+w = Sw^{-1} (mu_1 - mu_0)
 ```
+Decision: loan defaults if w^T x >= threshold (midpoint of projected class means).
 
-where:
+**k-Nearest Neighbours (k=15)** — predicted PD = fraction of 15 nearest training loans (Euclidean distance, standardized features) that defaulted. Asymmetric threshold 0.35 used (false negatives are more costly than false positives in lending).
 
-- Z = systematic factor
-- ε = idiosyncratic borrower risk
-- ρ = Basel II asset correlation
-
-A borrower defaults whenever its simulated asset return falls below the threshold implied by its estimated probability of default.
-
----
-
-## Monte Carlo Simulation
-
-Portfolio losses are simulated using:
-
-| Parameter | Value |
-|------------|------------|
-| Portfolio Size | 2,000 Loans |
-| Monte Carlo Scenarios | 100,000 |
-| Loss Given Default (LGD) | 45% |
-
-The simulation generates the full distribution of portfolio losses under correlated default behavior.
-
----
-
-# Portfolio Risk Metrics
-
-| Metric | Value |
-|------------|------------|
-| Expected Loss (EL) | 9.60% |
-| Unexpected Loss (UL) | 4.16% |
-| VaR 95% | 17.28% |
-| VaR 99% | 21.29% |
-| CVaR 95% | 19.74% |
-| CVaR 99% | 23.36% |
-| Basel II Capital Requirement | 16.25% |
-
----
-
-## Key Findings
-
-- Portfolio losses exhibit strong right-tail behavior due to correlated defaults.
-- CVaR significantly exceeds VaR, indicating substantial tail risk.
-- Basel II capital estimates closely align with Monte Carlo portfolio simulations.
-- Economic capital required to absorb extreme losses is substantial even when average portfolio losses remain moderate.
-
----
-
-# Visualizations
-
-The project generates a complete suite of visualizations including:
-
-### Exploratory Analysis
-
-- Default Rate by Grade
-- FICO Distribution by Outcome
-- Key Risk Feature Distributions
-- Loan Amount Analysis
-
-### Model Evaluation
-
-- ROC Curves
-- Model Comparison
-- Feature Importance
-- Threshold Analysis
-- Calibration Curves
+**Logistic Regression (L2)** — sigmoid model with regularised cross-entropy loss:
+```
+P(default | x) = 1 / (1 + exp(-(w^T x + b)))
+Loss = -mean[y log(p) + (1-y) log(1-p)] + (lambda/2)||w||^2
+```
+Trained via mini-batch SGD (lr=0.05, lambda=1e-3, batch=64, 300 epochs).
 
 ### Portfolio Risk
 
-- Loss Distribution
-- Basel II Capital Curves
+**One-factor Gaussian copula** (Basel II model): each borrower shares a systematic factor Z ~ N(0,1):
+```
+X_i = sqrt(rho_i) * Z + sqrt(1 - rho_i) * eps_i
+```
+Borrower i defaults if X_i < Phi^{-1}(PD_i). Asset correlation from the Basel II IRB formula:
+```
+rho(PD) = 0.12 * f(PD) + 0.24 * (1 - f(PD)),   f(PD) = (1 - exp(-50*PD)) / (1 - exp(-50))
+```
+
+**Basel II Capital Requirement:**
+```
+K(PD) = LGD * [Phi((Phi^{-1}(PD) + sqrt(rho) * Phi^{-1}(0.999)) / sqrt(1-rho)) - PD]
+```
+targets the 99.9% confidence level.
+
+Full derivations in [`report/Report.pdf`](report/Report.pdf).
 
 ---
 
-# Repository Structure
+## Project Structure
 
-```text
-.
-├── include/
-│   ├── matrix.h
-│   ├── data_loader.h
-│   ├── classifiers.h
-│   ├── portfolio_mc.h
-│   └── results_writer.h
-│
-├── src/
-│   └── main.cpp
-│
-│
-├── R/
-│   └── Credit_Scoring_and_Portfolio_Loss_Analysis_Report.pdf
-│
-│
-├── report/
-│   └── analysis.R
+```
+credit-scoring-portfolio-loss/
 ├── README.md
-└── LICENSE
+├── report/
+│   ├── Report(2).pdf          # Full write-up: theory, results, Basel II analysis
+│   └── report.tex          # LaTeX source
+├── include/
+│   ├── matrix.h            # Dense matrix, LU inversion, vector utilities
+│   ├── data_loader.h       # CSV parser, feature encoding, standardization, train/test split
+│   ├── classifiers.h       # LDA, k-NN, Logistic Regression, AUC/F1/precision/recall
+│   ├── portfolio_mc.h      # One-factor Gaussian copula MC, Basel II formulas, VaR/CVaR
+│   └── results_writer.h    # CSV export utilities
+├── src/
+│   └── main.cpp            # Pipeline: load -> train -> evaluate -> portfolio -> MC -> export
+├── R/
+│   └── analysis.R          # 12 ggplot2 visualisations
+├── data/
+│   └── generate_data.py    # Generates lending_club.csv (run this first)
+└── results/
+    └── *.png               # All 12 output plots
+```
+
+> **Note:** `data/lending_club.csv` is not committed. Run `python3 data/generate_data.py` to generate it before running the C++ model.
+
+---
+
+## Experiments & Results
+
+### Exploratory Data Analysis
+
+**Default rate increases sharply by grade — Grade G has 14x the default rate of Grade A:**
+
+![Default rate by grade](results/01_default_rate_by_grade.png)
+
+**FICO scores are strongly separated between defaulters and non-defaulters:**
+
+![FICO distribution](results/02_fico_distribution.png)
+
+**DTI and interest rate are both elevated for defaulters:**
+
+![Key features](results/03_key_features.png)
+
+---
+
+### Classifier Performance
+
+**ROC curves — LDA and Logistic Regression both achieve AUC ≈ 0.70; k-NN underperforms due to the curse of dimensionality in 14-dimensional feature space:**
+
+![ROC curves](results/05_roc_curves.png)
+
+**All metrics across models:**
+
+![Model comparison](results/11_model_comparison.png)
+
+| Model | Threshold | Accuracy | Recall | F1 | AUC |
+|---|---|---|---|---|---|
+| LDA | 0.50 | 0.755 | 0.579 | 0.433 | 0.699 |
+| k-NN (k=15) | 0.35 | 0.690 | 0.468 | 0.246 | 0.637 |
+| Logistic Reg. (L2) | 0.40 | 0.776 | 0.327 | 0.291 | 0.699 |
+
+AUC ≈ 0.70 is consistent with published Lending Club baselines before feature engineering and ensemble methods are applied.
+
+---
+
+### Feature Importance
+
+**Grade and FICO dominate; delinquency history and interest rate follow:**
+
+![Feature importance](results/06_feature_importance.png)
+
+---
+
+### Decision Threshold Analysis
+
+**Lower threshold → higher recall (more defaults caught) at the cost of precision. Threshold 0.40 is chosen to balance this tradeoff:**
+
+![Threshold analysis](results/07_threshold_analysis.png)
+
+---
+
+### PD Calibration
+
+**Model PD tracks empirical default rates well across grades. L2 regularisation causes mild shrinkage toward the mean at extreme grades (F/G):**
+
+![PD by grade](results/08_pd_by_grade.png)
+
+![Calibration](results/12_calibration.png)
+
+---
+
+### Monte Carlo Portfolio Loss Distribution
+
+**The loss distribution is right-skewed due to systematic risk — bad economic scenarios cause correlated defaults:**
+
+![Loss distribution](results/09_loss_distribution.png)
+
+| Risk Metric | Value | Interpretation |
+|---|---|---|
+| Expected Loss (EL) | 9.60% | Average loss across all scenarios |
+| Unexpected Loss (std) | 4.16% | One standard deviation |
+| VaR 95% | 17.28% | Exceeded in only 5% of scenarios |
+| VaR 99% | 21.29% | Exceeded in only 1% of scenarios |
+| CVaR 95% | 19.74% | Mean loss beyond VaR 95% |
+| CVaR 99% | 23.36% | Mean loss beyond VaR 99% |
+| Basel II Capital | 16.25% | Regulatory capital at 99.9% confidence |
+
+---
+
+### Basel II Capital Requirement
+
+**Capital requirement K(PD) peaks around PD ≈ 15% and asset correlation decreases with PD (riskier borrowers are more idiosyncratic):**
+
+![Basel II capital](results/10_basel_capital.png)
+
+---
+
+## Quick Start
+
+### Prerequisites
+
+```bash
+# C++ compiler (GCC >= 9)
+g++ --version
+
+# Python 3 (for data generation)
+python3 --version
+
+# R >= 4.0
+R --version
+
+# R packages
+Rscript -e "install.packages(c('ggplot2','dplyr','tidyr','scales','gridExtra','ragg'))"
+```
+
+### 1. Generate Data
+
+```bash
+python3 data/generate_data.py
+# Creates data/lending_club.csv  (10,000 loans, ~21% default rate)
+```
+
+### 2. Compile & Run C++ Model
+
+```bash
+cd src/
+g++ -O2 -std=c++17 -I../include main.cpp -o credit_model
+./credit_model
+# Trains LDA, k-NN, Logistic Regression
+# Runs 100,000 Monte Carlo scenarios
+# Writes all results to ../data/*.csv
+```
+
+Expected runtime: ~2 minutes (k-NN dominates due to O(n*d) distance computation).
+
+### 3. Generate Plots
+
+```bash
+cd R/
+Rscript analysis.R
+# Generates 12 plots -> ../results/
+```
+
+### 4. Compile Report (optional)
+
+```bash
+cd report/
+pdflatex report.tex
+pdflatex report.tex   # second pass for cross-references
 ```
 
 ---
 
-# Technologies Used
+## Engineering Takeaways
 
-## Languages
-
-- C++17
-- R
-
-## Libraries
-
-### C++
-
-- Standard Template Library (STL)
-
-### R
-
-- ggplot2
-- ragg
+| Finding | Recommendation |
+|---|---|
+| Grade is the strongest predictor | Lender risk grades encode most of the signal; FICO adds independent information |
+| k-NN underperforms in 14D | Run PCA first; k-NN benefits significantly from dimensionality reduction |
+| CVaR > VaR | Use CVaR (Expected Shortfall) for internal capital; VaR underestimates tail risk |
+| Basel capital > VaR 99% | Correct — Basel targets 99.9%; the 0.9% gap carries significant additional loss |
+| Threshold matters | In lending, a threshold of 0.35–0.40 (not 0.50) better reflects asymmetric misclassification costs |
 
 ---
 
-# Concepts Demonstrated
+## References
 
-- Credit Scoring
-- Logistic Regression
-- Linear Discriminant Analysis
-- k-Nearest Neighbours
-- Probability of Default Estimation
-- Monte Carlo Simulation
-- Gaussian Copulas
-- Portfolio Credit Risk
-- Value-at-Risk (VaR)
-- Expected Shortfall (CVaR)
-- Basel II Capital Modelling
-- Statistical Learning
-- Quantitative Risk Management
-
-
+1. Basel Committee on Banking Supervision, *International Convergence of Capital Measurement and Capital Standards (Basel II)*, BIS, 2006.
+2. Altman, E. I., "Financial Ratios, Discriminant Analysis and the Prediction of Corporate Bankruptcy," *Journal of Finance*, 23(4), 1968.
+3. Thomas, Edelman, Crook, *Credit Scoring and Its Applications*, SIAM, 2002.
+4. McNeil, Frey, Embrechts, *Quantitative Risk Management*, Princeton University Press, 2015.
+5. Hastie, Tibshirani, Friedman, *The Elements of Statistical Learning*, 2nd ed., Springer, 2009.
 
 ---
 
-# Author
-
-**Karthik Rao Varam**  
-B.S. Statistics and Data Science  
-Indian Institute of Technology Kanpur
-
-**Tools:** C++17 • R • Statistical Learning • Monte Carlo Simulation • Quantitative Risk Management
+*Built with C++17 ML engines from scratch and R/ggplot2 analysis.*
